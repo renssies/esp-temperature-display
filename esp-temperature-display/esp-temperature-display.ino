@@ -136,6 +136,9 @@ void setupWiFiManager() {
       Serial.println("Failed to start mDNS");
     }
     MDNS.addService("http", "tcp", 80);
+    MDNS.addServiceTxt("http", "tcp", "id", String(ESP.getChipId()));
+    MDNS.addServiceTxt("http", "tcp", "ma", WiFi.macAddress().c_str());
+    MDNS.addServiceTxt("http", "tcp", "hw", "esp8266");
   } else {
     showUnavailableLines(0, 0, brightness);
 
