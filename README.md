@@ -1,5 +1,5 @@
 # ESP8266 Temperature Display
-A rewrite of the neopixel based temperature display at [Pixelbar](https://pixelbar.nl) originaly created by Ghostleyjim
+A rewrite of the neopixel based temperature display at [Pixelbar](https://pixelbar.nl) originally created by Ghostleyjim
 
 The source code can be found in the `esp-temperature-display` folder.
 
