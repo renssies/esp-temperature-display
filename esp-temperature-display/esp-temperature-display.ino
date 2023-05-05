@@ -17,6 +17,27 @@
 
 #include "constants.h"
 
+unsigned long digitOne = 0b00000000000000000000000011111111;
+
+// The order of pixels:
+// D6             D7
+//
+// 08 09 10 11    08 09 10 11
+// 07       12    07       12
+// 06       13    06       13
+// 05       14    05       14
+// 04 21 22 15    04 21 22 15
+// 03       16    03       16
+// 02       17    02       17
+// 01 20 19 18    01 20 19 18
+
+//
+// MARK: - Setup
+//
+
+//                                            0                                   1                                      2                                3                                4                                      5                               6                                 7                                         8                              9
+unsigned long digitMapping[10] = {0b00000000000011111111111111111111,0b00000000000000000000000011111111,0b00000000001111100111111110001111,0b000000000001111100100011111111111,0b00000000001100111100000011111111,0b00000000001111111100011111111001,0b00000000001111111111111111111001,0b00000000000011100000000011111111,0b00000000001111111111111111111111,0b00000000001111111100011111111111};
+
 Adafruit_NeoPixel segment1Pixels(NUMBER_OF_PIXELS, SEGMENT1_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel segment2Pixels(NUMBER_OF_PIXELS, SEGMENT2_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -70,6 +91,10 @@ String mqttLastWillTopic;
 // 03       16    03       16
 // 02       17    02       17
 // 01 20 19 18    01 20 19 18
+
+
+
+
 
 //
 // MARK: - Setup
@@ -272,28 +297,72 @@ void loop() {
 void updateNeopixelsTemperature() {
   // This code needs to be replaced to show the temperature.
   // Use `int displayTemperature` to get the temperature suitable for display.
+  
   long now = millis();
+  
+  
+  
+  
+  
   if ((now - lastPixelChangeTime) < PIXEL_CHANGE_INTERVAL) {
     return;
   }
+  
+  
   if (!isValidTemperatureValue(displayTemperature)) {
     clearPixels();
     showUnavailableLines(brightness, 0, 0);
     return;
+
+
   }
+
+
+
+   clearPixels();
+  for(int i = 0; i<=31; i++){
+    if(bitRead(digitMapping[displayTemperature/10],i)){segment1Pixels.setPixelColor(i, segment1Pixels.Color(255, 150, 0));}
+
+  }
+   segment1Pixels.setBrightness(brightness);
+  segment1Pixels.show();
+
+
+  for(int i = 0; i<=31; i++){
+    if(bitRead(digitMapping[displayTemperature%10],i)){segment2Pixels.setPixelColor(i, segment2Pixels.Color(255, 150, 0));}
+
+  }
+   segment2Pixels.setBrightness(brightness);
+  segment2Pixels.show();
+
+
+  //Serial.println("");
+  //segment1Pixels.setPixelColor(1, segment1Pixels.Color(255, 150, 0));
+
+
+ // segment1Pixels.setBrightness(brightness);
+  //segment1Pixels.show();
+
+  /*
+  segment2Pixels.setPixelColor(1, segment2Pixels.Color(255, 150, 200));
+  segment2Pixels.setBrightness(brightness);
+  segment2Pixels.show();
+  /*
   int pixelToChange = previousChangedPixel + 1;
+
     if (pixelToChange >= NUMBER_OF_PIXELS) {
       clearPixels();
       previousChangedPixel = -1;
     } else {
-      segment1Pixels.setPixelColor(pixelToChange, segment1Pixels.Color(0, 150, 0));
+      segment1Pixels.setPixelColor(pixelToChange, segment1Pixels.Color(255, 150, 0));
       segment1Pixels.setBrightness(brightness);
       segment1Pixels.show();
-      segment2Pixels.setPixelColor(pixelToChange, segment2Pixels.Color(0, 150, 0));
+      segment2Pixels.setPixelColor(pixelToChange, segment2Pixels.Color(0, 150,70));
       segment2Pixels.setBrightness(brightness);
       segment2Pixels.show();
       previousChangedPixel = pixelToChange;
     }
+    */
     lastPixelChangeTime = now;
 }
 
