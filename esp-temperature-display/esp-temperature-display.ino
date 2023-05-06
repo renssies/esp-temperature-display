@@ -318,10 +318,14 @@ void updateNeopixelsTemperature() {
   }
 
 
+ int testTemp = displayTemperature;
+
+//for(int testTemp = 0; testTemp <=30; testTemp++){
+
 
    clearPixels();
   for(int i = 0; i<=31; i++){
-    if(bitRead(digitMapping[displayTemperature/10],i)){segment1Pixels.setPixelColor(i, segment1Pixels.Color(255, 150, 0));}
+    if(bitRead(digitMapping[testTemp/10],i)){segment1Pixels.setPixelColor(i, segment1Pixels.Color(map(testTemp, 0, 30, 0,255), 0, map(testTemp, 0, 30, 255,0)));}
 
   }
    segment1Pixels.setBrightness(brightness);
@@ -329,12 +333,13 @@ void updateNeopixelsTemperature() {
 
 
   for(int i = 0; i<=31; i++){
-    if(bitRead(digitMapping[displayTemperature%10],i)){segment2Pixels.setPixelColor(i, segment2Pixels.Color(255, 150, 0));}
+    if(bitRead(digitMapping[testTemp%10],i)){segment2Pixels.setPixelColor(i, segment2Pixels.Color(map(testTemp, 0, 30, 0,255), 0, map(testTemp, 0, 30, 255,0)));}
 
   }
    segment2Pixels.setBrightness(brightness);
   segment2Pixels.show();
-
+  //delay(250);
+//}
 
   //Serial.println("");
   //segment1Pixels.setPixelColor(1, segment1Pixels.Color(255, 150, 0));
