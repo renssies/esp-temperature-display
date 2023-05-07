@@ -76,12 +76,6 @@ String mqttLastWillTopic;
 //11          06    11          06
 //10  09  08  07    10  09  08  07
 
-
-
-
-
-
-
 //
 // MARK: - Setup
 //
