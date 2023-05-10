@@ -19,8 +19,8 @@
 
 unsigned long digitOne = 0b00000000000000000000000011111111;
 
-//                                     0                                   1                                      2                                3                                4                                      5                               6                                 7                                         8                              9                                         -
-unsigned long digitMapping[11] = {0b00000000000011111111111111111111,0b00000000000000000000000011111111,0b00000000001111100111111110001111,0b000000000001111100100011111111111,0b00000000001100111100000011111111,0b00000000001111111100011111111001,0b00000000001111111111111111111001,0b00000000000011100000000011111111,0b00000000001111111111111111111111,0b00000000001111111100011111111111,0b00000000001100000000000000000000};
+//                                     0                                   1                                      2                                3                                4                                      5                               6                                 7                                         8                              9                                         -                               [empty]                                    H                                  L
+unsigned long digitMapping[14] = {0b00000000000011111111111111111111,0b00000000000000000000000011111111,0b00000000001111100111111110001111,0b000000000001111100100011111111111,0b00000000001100111100000011111111,0b00000000001111111100011111111001,0b00000000001111111111111111111001,0b00000000000011100000000011111111,0b00000000001111111111111111111111,0b00000000001111111100011111111111,0b00000000001100000000000000000000,0b00000000000000000000000000000000,0b00000000001100111111110011111111,0b00000000000000111111111110000000 };
 
 Adafruit_NeoPixel segment1Pixels(NUMBER_OF_PIXELS, SEGMENT1_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel segment2Pixels(NUMBER_OF_PIXELS, SEGMENT2_PIN, NEO_GRB + NEO_KHZ800);
@@ -299,17 +299,64 @@ void updateNeopixelsTemperature() {
 
 
  int testTemp = displayTemperature;
-
-//for(int testTemp = 0; testTemp <=30; testTemp++){
-
-
+int segment1Digit = 0;
+int segment2Digit = 0;
+//for(int testTemp = -11; testTemp <=110; testTemp++){
    clearPixels();
+ 
+
+    //int temp = 0;
+
+    if (testTemp < -9) { //too LOW
+      segment1Digit = 13;
+      segment2Digit = 0;
+    }    
+    if (testTemp < 0 and testTemp > -10) {
+     segment1Digit = 10;
+      segment2Digit = abs(testTemp );
+    }
+    
+
+    if (testTemp == 0) { //Zero
+            segment1Digit = 11;
+            segment2Digit = 0;
+
+      //Serial.print(testTemp);
+     // Serial.print("n ");
+    }
+    if (testTemp > 9 and testTemp <100) {// Double digit
+      segment1Digit = testTemp/10;
+      segment2Digit = testTemp%10;
+     // Serial.print(testTemp);
+     // Serial.print("d ");
+    } 
+      if (testTemp > 0 and testTemp <10) { //single digit
+            segment1Digit = 11;
+            segment2Digit = testTemp;
+      }
+          if (testTemp > 99) { //too HIGH
+            segment1Digit = 12;
+            segment2Digit = 1;
+      }
+
   for(int i = 0; i<=31; i++){
-    if(bitRead(digitMapping[testTemp/10],i)){segment1Pixels.setPixelColor(i, segment1Pixels.Color(map(testTemp, 0, 30, 0,255), 0, map(testTemp, 0, 30, 255,0)));}
+    if(bitRead(digitMapping[segment1Digit],i)){segment1Pixels.setPixelColor(i, segment1Pixels.Color(255, 0, 255));}
+    if(bitRead(digitMapping[segment2Digit],i)){segment2Pixels.setPixelColor(i, segment2Pixels.Color(255, 0, 255));}
 
   }
-   segment1Pixels.setBrightness(brightness);
+
+
+  segment1Pixels.setBrightness(brightness);
   segment1Pixels.show();
+  segment2Pixels.setBrightness(brightness);
+  segment2Pixels.show();
+  //delay(250);
+  //}
+
+/*
+
+  
+
 
 
   for(int i = 0; i<=31; i++){
@@ -318,9 +365,9 @@ void updateNeopixelsTemperature() {
   }
    segment2Pixels.setBrightness(brightness);
   segment2Pixels.show();
-  //delay(250);
-//}
-
+  delay(250);
+}
+*/
   //Serial.println("");
   //segment1Pixels.setPixelColor(1, segment1Pixels.Color(255, 150, 0));
 
