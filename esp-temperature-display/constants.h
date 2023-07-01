@@ -2,16 +2,16 @@
 #define PB_CONTANTS 1
 
 // The pin for the first segment number.
-#define SEGMENT1_PIN D6
+#define SEGMENT1_PIN 1//D6
 
 // The pin for the second segment number.
-#define SEGMENT2_PIN D7
+#define SEGMENT2_PIN 2//D7
 
 // The number of Neopixels on one segment.
 #define NUMBER_OF_PIXELS 22
 
 // The pin used for one wire communication.
-#define ONE_WIRE_PIN D2
+#define ONE_WIRE_PIN 3//D2
 
 // Number of seconds after reset during which a subseqent reset will be detected as a double reset.
 #define DRD_TIMEOUT 10 // seconds

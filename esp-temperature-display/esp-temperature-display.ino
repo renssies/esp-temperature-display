@@ -1,26 +1,46 @@
-#include <ESP8266WiFi.h>  // Built in
-#include <ESP8266mDNS.h>  // Built in
-
-#include <DoubleResetDetector.h>  // From Library Manager, version 1.0.3
-#include <Adafruit_NeoPixel.h>    // From Library Manager, version 1.11.0
+// WiFiManager _has_ to be imported before ESPAsyncWebServer, and you _have_ to define WEBSERVER between imports
 #include <WiFiManager.h>          // From Library Manager, version 2.0.15-rc.1
+#define WEBSERVER_H             // Important to add before importing ESPAsyncWebServer to fix linker issues with WiFiManager and ESPAsyncWebserver
+
+#if defined(ESP32)
+#include "ESP32_Support.h"
+#elif defined(ESP8266)
+#include "ESP8266_Support.h"
+#endif
+
+#include <ESPAsyncWebServer.h>  // https://github.com/me-no-dev/ESPAsyncWebServer/tree/f71e3d427b5be9791a8a2c93cf8079792c3a9a26
+#include <ESP_DoubleResetDetector.h>
+
+// #include <DoubleResetDetector.h>  // From Library Manager, version 1.0.3
+#include <Adafruit_NeoPixel.h>    // From Library Manager, version 1.11.0
 #include <OneWire.h>              // From Library Manager, version 2.3.7
 #include <DallasTemperature.h>    // From Library Manager, version 3.9.0
 #include <PubSubClient.h>         // https://pubsubclient.knolleary.net, version 2.8.0
 #include <Preferences.h>          //  From Library Manager, version 2.1.0
 
-#define WEBSERVER_H             // Important to add before importing ESPAsyncWebServer to fix linker issues with WiFiManager and ESPAsyncWebserver
-#include <ESPAsyncTCP.h>        // https://github.com/me-no-dev/ESPAsyncTCP/tree/15476867dcbab906c0f1d47a7f63cdde223abeab
-#include <ESPAsyncWebServer.h>  // https://github.com/me-no-dev/ESPAsyncWebServer/tree/f71e3d427b5be9791a8a2c93cf8079792c3a9a26
+// #include <ESPAsyncTCP.h>        // https://github.com/me-no-dev/ESPAsyncTCP/tree/15476867dcbab906c0f1d47a7f63cdde223abeab
+// #include <ESPAsyncWebServer.h>  // https://github.com/me-no-dev/ESPAsyncWebServer/tree/f71e3d427b5be9791a8a2c93cf8079792c3a9a26
 #include <AsyncJson.h>
 #include <ArduinoJson.h>  // From Library Manager, version 6.21.2
 
 #include "constants.h"
 
-//unsigned long digitOne = 0b00000000000000000000000011111111;
-
-//                                     0                                   1                                      2                                3                                4                                      5                               6                                 7                                         8                              9                                         -                               [empty]                                    H                                  L
-unsigned long digitMapping[14] = { 0b00000000000011111111111111111111, 0b00000000000000000000000011111111, 0b00000000001111100111111110001111, 0b000000000001111100100011111111111, 0b00000000001100111100000011111111, 0b00000000001111111100011111111001, 0b00000000001111111111111111111001, 0b00000000000011100000000011111111, 0b00000000001111111111111111111111, 0b00000000001111111100011111111111, 0b00000000001100000000000000000000, 0b00000000000000000000000000000000, 0b00000000001100111111110011111111, 0b00000000000000111111111110000000 };
+unsigned long digitMapping[14] = { 
+  0b00000000000011111111111111111111,  // 0
+  0b00000000000000000000000011111111,  // 1
+  0b00000000001111100111111110001111,  // 2
+  0b000000000001111100100011111111111, // 3
+  0b00000000001100111100000011111111,  // 4
+  0b00000000001111111100011111111001,  // 5
+  0b00000000001111111111111111111001,  // 6
+  0b00000000000011100000000011111111,  // 7
+  0b00000000001111111111111111111111,  // 8
+  0b00000000001111111100011111111111,  // 9
+  0b00000000001100000000000000000000,  // -
+  0b00000000000000000000000000000000,  // [empty]
+  0b00000000001100111111110011111111,  // H
+  0b00000000000000111111111110000000   // L
+};
 
 Adafruit_NeoPixel segment1Pixels(NUMBER_OF_PIXELS, SEGMENT1_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel segment2Pixels(NUMBER_OF_PIXELS, SEGMENT2_PIN, NEO_GRB + NEO_KHZ800);
@@ -43,7 +63,7 @@ Preferences preferences;
 
 AsyncWebServer webServer(80);
 
-DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
+DoubleResetDetector *drd;
 
 long lastPixelChangeTime = 0;
 int previousChangedPixel = -1;
@@ -85,9 +105,11 @@ void setup() {
 
   WiFi.mode(WIFI_STA);  // explicitly set mode, esp defaults to STA+AP
 
-  hostname = String(HOSTNAME_PREFIX) + "-" + ESP.getChipId();
-  mqttTemperatureTopic = String(HOSTNAME_PREFIX) + "/" + ESP.getChipId() + "/temperature";
-  mqttLastWillTopic = String(HOSTNAME_PREFIX) + "/" + ESP.getChipId() + "/LWT";
+  drd = new DoubleResetDetector(DRD_TIMEOUT, DRD_ADDRESS);
+
+  hostname = String(HOSTNAME_PREFIX) + "-" + chipID;
+  mqttTemperatureTopic = String(HOSTNAME_PREFIX) + "/" + chipID + "/temperature";
+  mqttLastWillTopic = String(HOSTNAME_PREFIX) + "/" + chipID + "/LWT";
 
   readPreferences();
 
@@ -122,7 +144,7 @@ void setupWiFiManager() {
 
   wifiManager.setDebugOutput(false);
 
-  if (drd.detectDoubleReset()) {
+  if (drd->detectDoubleReset()) {
     showUnavailableLines(0, 0, brightness);
 
     Serial.println("Double reset detected");
@@ -141,7 +163,7 @@ void setupWiFiManager() {
       Serial.println("Failed to start mDNS");
     }
     MDNS.addService("http", "tcp", 80);
-    MDNS.addServiceTxt("http", "tcp", "id", String(ESP.getChipId()));
+    MDNS.addServiceTxt("http", "tcp", "id", String(chipID));
     MDNS.addServiceTxt("http", "tcp", "ma", WiFi.macAddress().c_str());
     MDNS.addServiceTxt("http", "tcp", "hw", "esp8266");
   } else {
@@ -205,7 +227,7 @@ void setupHTTPServer() {
     response->addHeader("X-Server", "ESP Async Web Server");
 
     JsonObject root = response->getRoot();
-    root["chip_id"] = ESP.getChipId();
+    root["chip_id"] = chipID;
     root["ip_address"] = WiFi.localIP();
     root["mac_address"] = WiFi.macAddress();
     root["uptime"] = millis();
@@ -257,8 +279,10 @@ void readPreferences() {
 void loop() {
   connectMQTT();
   wifiManager.process();
-  drd.loop();
+  drd->loop();
+  #if defined(ESP8266)
   MDNS.update();
+  #endif
 
   readTemperature();
 
