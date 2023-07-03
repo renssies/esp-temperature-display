@@ -14,7 +14,7 @@
 #define LED_OFF     LOW
 #define LED_ON      HIGH
 
-#include <AsyncTCP.h>
+#include <AsyncTCP.h> // From Library Manager, version 1.1.4
 
 String chipID = ESP.getChipModel();
 
