@@ -1,26 +1,43 @@
-#include <ESP8266WiFi.h>  // Built in
-#include <ESP8266mDNS.h>  // Built in
+// WiFiManager _has_ to be imported before ESPAsyncWebServer, and you _have_ to define WEBSERVER between imports
+#include <WiFiManager.h>         // From Library Manager, version 2.0.15-rc.1
+#define WEBSERVER_H             // Important to add before importing ESPAsyncWebServer to fix linker issues with WiFiManager and ESPAsyncWebserver
 
-#include <DoubleResetDetector.h>  // From Library Manager, version 1.0.3
+#if defined(ESP32)
+#include "ESP32_Support.h"
+#elif defined(ESP8266)
+#include "ESP8266_Support.h"
+#endif
+
+#include <ESPAsyncWebServer.h>       // https://github.com/me-no-dev/ESPAsyncWebServer/tree/f71e3d427b5be9791a8a2c93cf8079792c3a9a26
+#include <ESP_DoubleResetDetector.h> // From Library Manager, version 1.3.2
+
 #include <Adafruit_NeoPixel.h>    // From Library Manager, version 1.11.0
-#include <WiFiManager.h>          // From Library Manager, version 2.0.15-rc.1
 #include <OneWire.h>              // From Library Manager, version 2.3.7
 #include <DallasTemperature.h>    // From Library Manager, version 3.9.0
 #include <PubSubClient.h>         // https://pubsubclient.knolleary.net, version 2.8.0
 #include <Preferences.h>          //  From Library Manager, version 2.1.0
 
-#define WEBSERVER_H             // Important to add before importing ESPAsyncWebServer to fix linker issues with WiFiManager and ESPAsyncWebserver
-#include <ESPAsyncTCP.h>        // https://github.com/me-no-dev/ESPAsyncTCP/tree/15476867dcbab906c0f1d47a7f63cdde223abeab
-#include <ESPAsyncWebServer.h>  // https://github.com/me-no-dev/ESPAsyncWebServer/tree/f71e3d427b5be9791a8a2c93cf8079792c3a9a26
 #include <AsyncJson.h>
 #include <ArduinoJson.h>  // From Library Manager, version 6.21.2
 
 #include "constants.h"
 
-//unsigned long digitOne = 0b00000000000000000000000011111111;
-
-//                                     0                                   1                                      2                                3                                4                                      5                               6                                 7                                         8                              9                                         -                               [empty]                                    H                                  L
-unsigned long digitMapping[14] = { 0b00000000000011111111111111111111, 0b00000000000000000000000011111111, 0b00000000001111100111111110001111, 0b000000000001111100100011111111111, 0b00000000001100111100000011111111, 0b00000000001111111100011111111001, 0b00000000001111111111111111111001, 0b00000000000011100000000011111111, 0b00000000001111111111111111111111, 0b00000000001111111100011111111111, 0b00000000001100000000000000000000, 0b00000000000000000000000000000000, 0b00000000001100111111110011111111, 0b00000000000000111111111110000000 };
+unsigned long digitMapping[14] = { 
+  0b00000000000011111111111111111111,  // 0
+  0b00000000000000000000000011111111,  // 1
+  0b00000000001111100111111110001111,  // 2
+  0b000000000001111100100011111111111, // 3
+  0b00000000001100111100000011111111,  // 4
+  0b00000000001111111100011111111001,  // 5
+  0b00000000001111111111111111111001,  // 6
+  0b00000000000011100000000011111111,  // 7
+  0b00000000001111111111111111111111,  // 8
+  0b00000000001111111100011111111111,  // 9
+  0b00000000001100000000000000000000,  // -
+  0b00000000000000000000000000000000,  // [empty]
+  0b00000000001100111111110011111111,  // H
+  0b00000000000000111111111110000000   // L
+};
 
 Adafruit_NeoPixel segment1Pixels(NUMBER_OF_PIXELS, SEGMENT1_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel segment2Pixels(NUMBER_OF_PIXELS, SEGMENT2_PIN, NEO_GRB + NEO_KHZ800);
@@ -43,19 +60,8 @@ Preferences preferences;
 
 AsyncWebServer webServer(80);
 
-DoubleResetDetector drd(DRD_TIMEOUT, DRD_ADDRESS);
-
-long lastPixelChangeTime = 0;
-int previousChangedPixel = -1;
-
-long lastTemperatureReadTime = 0;
-
-long lastMQTTConnectTime = 0;
-
-int brightness = 10;  // 0-255
-
-float temperature = -100;
-int displayTemperature = -100;
+DoubleResetDetector *drd;
+State *state = new State();
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -85,9 +91,11 @@ void setup() {
 
   WiFi.mode(WIFI_STA);  // explicitly set mode, esp defaults to STA+AP
 
-  hostname = String(HOSTNAME_PREFIX) + "-" + ESP.getChipId();
-  mqttTemperatureTopic = String(HOSTNAME_PREFIX) + "/" + ESP.getChipId() + "/temperature";
-  mqttLastWillTopic = String(HOSTNAME_PREFIX) + "/" + ESP.getChipId() + "/LWT";
+  drd = new DoubleResetDetector(DRD_TIMEOUT, DRD_ADDRESS);
+
+  hostname = String(HOSTNAME_PREFIX) + "-" + chipID;
+  mqttTemperatureTopic = String(HOSTNAME_PREFIX) + "/" + chipID + "/temperature";
+  mqttLastWillTopic = String(HOSTNAME_PREFIX) + "/" + chipID + "/LWT";
 
   readPreferences();
 
@@ -122,30 +130,25 @@ void setupWiFiManager() {
 
   wifiManager.setDebugOutput(false);
 
-  if (drd.detectDoubleReset()) {
-    showUnavailableLines(0, 0, brightness);
+  if (drd->detectDoubleReset()) {
+    showUnavailableLines(0, 0, state->brightness);
 
     Serial.println("Double reset detected");
     wifiManager.setConfigPortalTimeout(30);
     wifiManager.setConfigPortalTimeoutCallback(configModeTimeoutCallback);
     wifiManager.startConfigPortal(CONFIG_AP_SSID, CONFIG_AP_PASSWORD);
-    Serial.print("Config portal started, network password: ");
-    Serial.println(CONFIG_AP_PASSWORD);
+    Serial.printf("Config portal started, network password: %s\n", CONFIG_AP_PASSWORD);
   } else if (wifiManager.autoConnect(CONFIG_AP_SSID, CONFIG_AP_PASSWORD)) {
-    Serial.println("Connected...yaay :)");
-    Serial.print("IP Address: ");
-    Serial.print(WiFi.localIP());
-    Serial.print(" MAC Address: ");
-    Serial.println(WiFi.macAddress());
+    Serial.printf("Connected... yaay :)\nIP address: %s MAC Address: %s\n", WiFi.localIP(), WiFi.macAddress());
     if (!MDNS.begin(hostname)) {
       Serial.println("Failed to start mDNS");
     }
     MDNS.addService("http", "tcp", 80);
-    MDNS.addServiceTxt("http", "tcp", "id", String(ESP.getChipId()));
+    MDNS.addServiceTxt("http", "tcp", "id", String(chipID));
     MDNS.addServiceTxt("http", "tcp", "ma", WiFi.macAddress().c_str());
     MDNS.addServiceTxt("http", "tcp", "hw", "esp8266");
   } else {
-    showUnavailableLines(0, 0, brightness);
+    showUnavailableLines(0, 0, state->brightness);
 
     Serial.print("Config portal started automatically, network password: ");
     Serial.println(CONFIG_AP_PASSWORD);
@@ -166,13 +169,13 @@ void setupHTTPServer() {
     response->addHeader("X-Server", "ESP Async Web Server");
 
     JsonObject root = response->getRoot();
-    if (isValidTemperatureValue(temperature)) {
-      root["temperature"] = round1(temperature);
+    if (isValidTemperatureValue(state->temperature)) {
+      root["temperature"] = round1(state->temperature);
     } else {
       root["temperature"] = nullptr;
     }
-    if (isValidTemperatureValue(displayTemperature)) {
-      root["display_temperature"] = displayTemperature;
+    if (isValidTemperatureValue(state->displayTemperature)) {
+      root["display_temperature"] = state->displayTemperature;
     } else {
       root["display_temperature"] = nullptr;
     }
@@ -205,7 +208,7 @@ void setupHTTPServer() {
     response->addHeader("X-Server", "ESP Async Web Server");
 
     JsonObject root = response->getRoot();
-    root["chip_id"] = ESP.getChipId();
+    root["chip_id"] = chipID;
     root["ip_address"] = WiFi.localIP();
     root["mac_address"] = WiFi.macAddress();
     root["uptime"] = millis();
@@ -229,7 +232,7 @@ void setupHTTPServer() {
 }
 
 void readPreferences() {
-  Serial.println("Reading preferenes");
+  Serial.println("Reading preferences");
 
   preferences.begin("esp-temp-display", true);
 
@@ -257,8 +260,10 @@ void readPreferences() {
 void loop() {
   connectMQTT();
   wifiManager.process();
-  drd.loop();
+  drd->loop();
+  #if defined(ESP8266)
   MDNS.update();
+  #endif
 
   readTemperature();
 
@@ -272,134 +277,120 @@ void loop() {
 //
 // MARK: - Neopixels
 //
-
 void updateNeopixelsTemperature() {
   // This code needs to be replaced to show the temperature.
   // Use `int displayTemperature` to get the temperature suitable for display.
-
-  long now = millis();
-
-
-
-
-
-  if ((now - lastPixelChangeTime) < PIXEL_CHANGE_INTERVAL) {
+  if (!state->shouldUpdatePixels()) {
     return;
   }
 
-
-  if (!isValidTemperatureValue(displayTemperature)) {
+  if (!isValidTemperatureValue(state->displayTemperature)) {
     clearPixels();
-    showUnavailableLines(brightness, 0, 0);
+    showUnavailableLines(state->brightness, 0, 0);
     return;
   }
 
-
-  int testTemp = displayTemperature;
+  int testTemp = state->displayTemperature;
   int segment1Digit = 0;
   int segment2Digit = 0;
   int pixelColorRed = 0;
   int pixelColorBlue = 0;
   int pixelColorGreen = 0;
 
+  clearPixels();
 
-    clearPixels();
+  if (testTemp < -9) {  //too LOW
+    segment1Digit = 13;
+    segment2Digit = 0;
+    pixelColorRed = 255;
+    pixelColorBlue = 255;
+    pixelColorGreen = 0;
+  }
 
+  if (testTemp < 0 and testTemp > -10) {
+    segment1Digit = 10;
+    segment2Digit = abs(testTemp);
 
-    //int temp = 0;
-
-    if (testTemp < -9) {  //too LOW
-      segment1Digit = 13;
-      segment2Digit = 0;
-      pixelColorRed = 255;
-      pixelColorBlue = 255;
-      pixelColorGreen = 0;
-    }
-    if (testTemp < 0 and testTemp > -10) {
-      segment1Digit = 10;
-      segment2Digit = abs(testTemp);
-     
-      pixelColorRed = map(testTemp,-10,0,255,0);
-      pixelColorBlue = 255;
-      pixelColorGreen = 0;
-    }
+    pixelColorRed = map(testTemp,-10,0,255,0);
+    pixelColorBlue = 255;
+    pixelColorGreen = 0;
+  }
 
 
-    if (testTemp == 0) {  //Zero
-      segment1Digit = 11;
-      segment2Digit = 0;
+  if (testTemp == 0) {  //Zero
+    segment1Digit = 11;
+    segment2Digit = 0;
 
-      pixelColorRed = 0;
-      pixelColorBlue = 255;
-      pixelColorGreen = 0;
-    }
+    pixelColorRed = 0;
+    pixelColorBlue = 255;
+    pixelColorGreen = 0;
+  }
 
-    if (testTemp > 0 and testTemp < 10) {  //single digit
-      segment1Digit = 11;
-      segment2Digit = testTemp;
-      pixelColorRed = map(testTemp,0,10,0,255);
-      pixelColorBlue = map(testTemp,0,10,255,0);
-      pixelColorGreen = map(testTemp,0,10,0,255);
-    }
+  if (testTemp > 0 and testTemp < 10) {  //single digit
+    segment1Digit = 11;
+    segment2Digit = testTemp;
+    pixelColorRed = map(testTemp,0,10,0,255);
+    pixelColorBlue = map(testTemp,0,10,255,0);
+    pixelColorGreen = map(testTemp,0,10,0,255);
+  }
 
-    if (testTemp > 9 and testTemp < 31) {  // Double digit low
-      segment1Digit = testTemp / 10;
-      segment2Digit = testTemp % 10;
-      pixelColorRed = 255;
-      pixelColorBlue = 0;
-      pixelColorGreen = map(testTemp,9,30,255,0);
-    }
+  if (testTemp > 9 and testTemp < 31) {  // Double digit low
+    segment1Digit = testTemp / 10;
+    segment2Digit = testTemp % 10;
+    pixelColorRed = 255;
+    pixelColorBlue = 0;
+    pixelColorGreen = map(testTemp,9,30,255,0);
+  }
 
-    if (testTemp > 30 and testTemp <100) {  // Double digit high
-      segment1Digit = testTemp / 10;
-      segment2Digit = testTemp % 10;
-      pixelColorRed = 255;
-      pixelColorBlue = 0;
-      pixelColorGreen = 0;
-    }
-
-
-    if (testTemp > 99) {  //too HIGH
-      segment1Digit = 12;
-      segment2Digit = 1;
-      pixelColorRed = 255;
-      pixelColorBlue = 0;
-      pixelColorGreen = 0;
-    }
-
-    for (int i = 0; i <= 31; i++) {
-      if (bitRead(digitMapping[segment1Digit], i)) { segment1Pixels.setPixelColor(i, segment1Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
-      if (bitRead(digitMapping[segment2Digit], i)) { segment2Pixels.setPixelColor(i, segment2Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
-    }
+  if (testTemp > 30 and testTemp <100) {  // Double digit high
+    segment1Digit = testTemp / 10;
+    segment2Digit = testTemp % 10;
+    pixelColorRed = 255;
+    pixelColorBlue = 0;
+    pixelColorGreen = 0;
+  }
 
 
-    segment1Pixels.setBrightness(brightness);
-    segment1Pixels.show();
-    segment2Pixels.setBrightness(brightness);
-    segment2Pixels.show();
+  if (testTemp > 99) {  //too HIGH
+    segment1Digit = 12;
+    segment2Digit = 1;
+    pixelColorRed = 255;
+    pixelColorBlue = 0;
+    pixelColorGreen = 0;
+  }
 
-  lastPixelChangeTime = now;
+  for (int i = 0; i <= 31; i++) {
+    if (bitRead(digitMapping[segment1Digit], i)) { segment1Pixels.setPixelColor(i, segment1Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
+    if (bitRead(digitMapping[segment2Digit], i)) { segment2Pixels.setPixelColor(i, segment2Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
+  }
+
+  segment1Pixels.setBrightness(state->brightness);
+  segment1Pixels.show();
+  segment2Pixels.setBrightness(state->brightness);
+  segment2Pixels.show();
+
+  state->updateLastPixelChangeTime();
 }
 
 void updateNeopixelsConfigLoop() {
-  long now = millis();
-  if ((now - lastPixelChangeTime) < PIXEL_CHANGE_INTERVAL) {
+  if (!state->shouldUpdatePixels()) {
     return;
   }
-  int pixelToChange = previousChangedPixel + 1;
+
+  int pixelToChange = state->previousChangedPixel + 1;
   if (pixelToChange >= NUMBER_OF_PIXELS) {
     clearPixels();
-    previousChangedPixel = -1;
+    state->previousChangedPixel = -1;
   } else {
     segment1Pixels.setPixelColor(pixelToChange, segment1Pixels.Color(0, 0, 150));
-    segment1Pixels.setBrightness(brightness);
+    segment1Pixels.setBrightness(state->brightness);
     segment1Pixels.show();
     segment2Pixels.setPixelColor(pixelToChange, segment2Pixels.Color(0, 0, 150));
-    segment2Pixels.setBrightness(brightness);
+    segment2Pixels.setBrightness(state->brightness);
     segment2Pixels.show();
-    previousChangedPixel = pixelToChange;
+    state->previousChangedPixel = pixelToChange;
   }
-  lastPixelChangeTime = now;
+  state->updateLastPixelChangeTime();
 }
 
 void clearPixels() {
@@ -432,19 +423,18 @@ void hideUnavailableLines() {
 //
 
 void readTemperature() {
-  long now = millis();
-  if ((now - lastTemperatureReadTime) > READ_TEMPERATURE_INTERVAL || lastTemperatureReadTime == 0) {
+  if (state->shouldReadTemprature()) {
     if (!temperatureSensors.requestTemperaturesByIndex(0)) {
-      temperature = -100;
-      displayTemperature = -100;
+      state->temperature = -100;
+      state->displayTemperature = -100;
       return;
     }
     float newTemperature = round1(temperatureSensors.getTempCByIndex(0));
     Serial.print("Temperature: ");
     Serial.println(newTemperature);
-    temperature = newTemperature;
-    displayTemperature = round(newTemperature);
-    lastTemperatureReadTime = now;
+    state->temperature = newTemperature;
+    state->displayTemperature = round(newTemperature);
+    state->updateLastTemperatureReadTime();
     pulishTemperatureTopic(newTemperature);
   }
 }
@@ -465,10 +455,11 @@ void connectMQTT() {
   if (mqttServerStr.isEmpty()) {
     return;
   }
-  long now = millis();
-  if ((now - lastMQTTConnectTime) < MQTT_CONNECT_INTERVAL && lastMQTTConnectTime != 0) {
+
+  if (!state->shouldConnectMQTT()) {
     return;
   }
+
   int mqttPortInt = atoi(mqttPort);
   if (mqttPortInt <= 0) {
     mqttPortInt = 1883;
@@ -481,7 +472,7 @@ void connectMQTT() {
   } else {
     Serial.println("[MQTT]: Failed to connect");
   }
-  lastMQTTConnectTime = now;
+  state->updateLastMQTTConnectTime();
 }
 
 void publishHADiscoveryTopic() {
