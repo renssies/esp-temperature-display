@@ -21,22 +21,28 @@
 #include <ArduinoJson.h>  // From Library Manager, version 6.21.2
 
 #include "constants.h"
+#include "state.h"
 
-unsigned long digitMapping[14] = { 
-  0b00000000000011111111111111111111,  // 0
-  0b00000000000000000000000011111111,  // 1
-  0b00000000001111100111111110001111,  // 2
-  0b000000000001111100100011111111111, // 3
-  0b00000000001100111100000011111111,  // 4
-  0b00000000001111111100011111111001,  // 5
-  0b00000000001111111111111111111001,  // 6
-  0b00000000000011100000000011111111,  // 7
-  0b00000000001111111111111111111111,  // 8
-  0b00000000001111111100011111111111,  // 9
-  0b00000000001100000000000000000000,  // -
-  0b00000000000000000000000000000000,  // [empty]
-  0b00000000001100111111110011111111,  // H
-  0b00000000000000111111111110000000   // L
+/* 
+ * Each bit will be read, from the least-significant bit (the right)
+ * If the value is one that indicates the pixel should be on
+ * Note: you do not have to left pad 0s, but I will here
+ */
+unsigned long long digitMapping[14] = { 
+  0b00000000111111111111111111111111111111111111111111111111,  // 0
+  0b00000000000000000000000000000000000000001111111111111111,  // 1
+  0b11111111111111110000000011111111111111110000000011111111,  // 2
+  0b11111111111111110000000000000000111111111111111111111111,  // 3
+  0b11111111000000001111111100000000000000001111111111111111,  // 4
+  0b11111111111111111111111100000000111111111111111100000000,  // 5
+  0b11111111111111111111111111111111111111111111111100000000,  // 6
+  0b00000000111111110000000000000000000000001111111111111111,  // 7
+  0b11111111111111111111111111111111111111111111111111111111,  // 8
+  0b11111111111111111111111100000000111111111111111111111111,  // 9
+  0b11111111000000000000000000000000000000000000000000000000,  // -
+  0b00000000000000000000000000000000000000000000000000000000,  // [empty]
+  0b11111111000000001111111111111111000000001111111111111111,  // H
+  0b00000000000000001111111111111111111111110000000000000000   // L
 };
 
 Adafruit_NeoPixel segment1Pixels(NUMBER_OF_PIXELS, SEGMENT1_PIN, NEO_GRB + NEO_KHZ800);
@@ -265,6 +271,9 @@ void loop() {
   MDNS.update();
   #endif
 
+  #if DIGITS_DEBUG
+  testNumbers();
+  #else
   readTemperature();
 
   if (wifiManager.getConfigPortalActive()) {
@@ -272,11 +281,41 @@ void loop() {
   } else {
     updateNeopixelsTemperature();
   }
+  #endif
 }
 
 //
 // MARK: - Neopixels
 //
+void testNumbers() {
+  if (!state->shouldUpdatePixels()) {
+    return;
+  }
+
+  for (int i = 0; i < 14; i++) {
+    clearPixels();
+    
+    int segment1Digit = i;
+    int segment2Digit = i;
+
+    Serial.printf("Setting segments to: %d\n", segment1Digit);
+
+    for (int j = 0; j <= 63; j++) {
+      if (bitRead(digitMapping[segment1Digit], j)) { segment1Pixels.setPixelColor(j, segment1Pixels.Color(255, 255, 255)); }
+      if (bitRead(digitMapping[segment2Digit], j)) { segment2Pixels.setPixelColor(j, segment2Pixels.Color(255, 255, 255)); }
+    }
+
+    segment1Pixels.setBrightness(state->brightness);
+    segment1Pixels.show();
+    segment2Pixels.setBrightness(state->brightness);
+    segment2Pixels.show();
+
+    delay(500);
+  }
+
+  state->updateLastPixelChangeTime();
+}
+
 void updateNeopixelsTemperature() {
   // This code needs to be replaced to show the temperature.
   // Use `int displayTemperature` to get the temperature suitable for display.
@@ -359,7 +398,7 @@ void updateNeopixelsTemperature() {
     pixelColorGreen = 0;
   }
 
-  for (int i = 0; i <= 31; i++) {
+  for (int i = 0; i <= (sizeof(digitMapping[0]) * 8); i++) {
     if (bitRead(digitMapping[segment1Digit], i)) { segment1Pixels.setPixelColor(i, segment1Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
     if (bitRead(digitMapping[segment2Digit], i)) { segment2Pixels.setPixelColor(i, segment2Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
   }
