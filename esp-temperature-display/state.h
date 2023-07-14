@@ -6,16 +6,16 @@ class State {
   int previousChangedPixel = -1;
   long lastTemperatureReadTime = 0;
   long lastMQTTConnectTime = 0;
-  int brightness = 10;  // 0-255
+  int brightness = 50;  // 0-255
   float temperature = -100;
   int displayTemperature = -100;
 
   bool shouldUpdatePixels() {
     // return (millis() - lastPixelChangeTime) > PIXEL_CHANGE_INTERVAL;
-    return !((millis() - lastPixelChangeTime) < PIXEL_CHANGE_INTERVAL); 
+    return !((millis() - lastPixelChangeTime) < PIXEL_CHANGE_INTERVAL);
   }
 
-  bool shouldReadTemprature() {
+  bool shouldReadTemperature() {
     return (millis() - lastTemperatureReadTime) > READ_TEMPERATURE_INTERVAL || lastTemperatureReadTime == 0;
   }
 

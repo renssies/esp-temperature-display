@@ -20,30 +20,12 @@
 #include <AsyncJson.h>
 #include <ArduinoJson.h>  // From Library Manager, version 6.21.2
 
+// C++
+#include <limits>
+
 #include "constants.h"
 #include "state.h"
-
-/* 
- * Each bit will be read, from the least-significant bit (the right)
- * If the value is one that indicates the pixel should be on
- * Note: you do not have to left pad 0s, but I will here
- */
-unsigned long long digitMapping[14] = { 
-  0b00000000111111111111111111111111111111111111111111111111,  // 0
-  0b00000000000000000000000000000000000000001111111111111111,  // 1
-  0b11111111111111110000000011111111111111110000000011111111,  // 2
-  0b11111111111111110000000000000000111111111111111111111111,  // 3
-  0b11111111000000001111111100000000000000001111111111111111,  // 4
-  0b11111111111111111111111100000000111111111111111100000000,  // 5
-  0b11111111111111111111111111111111111111111111111100000000,  // 6
-  0b00000000111111110000000000000000000000001111111111111111,  // 7
-  0b11111111111111111111111111111111111111111111111111111111,  // 8
-  0b11111111111111111111111100000000111111111111111111111111,  // 9
-  0b11111111000000000000000000000000000000000000000000000000,  // -
-  0b00000000000000000000000000000000000000000000000000000000,  // [empty]
-  0b11111111000000001111111111111111000000001111111111111111,  // H
-  0b00000000000000001111111111111111111111110000000000000000   // L
-};
+#include "digit.h"
 
 Adafruit_NeoPixel segment1Pixels(NUMBER_OF_PIXELS, SEGMENT1_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel segment2Pixels(NUMBER_OF_PIXELS, SEGMENT2_PIN, NEO_GRB + NEO_KHZ800);
@@ -75,18 +57,6 @@ PubSubClient mqttClient(espClient);
 String hostname;
 String mqttTemperatureTopic;
 String mqttLastWillTopic;
-
-// The order of pixels:
-// D7               D6
-//
-//17	18	19	00    17	18	19	00
-//16    			01    16    			01
-//15	    		02    15	    		02
-//14	21  20	03    14	21  20	03
-//13	    		04    13	    		04
-//12	    		05    12	    		05
-//11          06    11          06
-//10  09  08  07    10  09  08  07
 
 //
 // MARK: - Setup
@@ -226,8 +196,8 @@ void setupHTTPServer() {
     }
     JsonObject aboutObject = root.createNestedObject("about");
     aboutObject["original_by"] = "ghostleyjim";
-    aboutObject["modified_by"] = "Sir-16 bit & renssies";
-    aboutObject["hardware"] = "Arduino on a ESP8266 NodeMCU, 44 Neopixels and a DS18b20 temperature sensor";
+    aboutObject["modified_by"] = "Sir-16 bit & renssies. NinjaLikesCheez touched this once.";
+    aboutObject["hardware"] = "Arduino on a ESP32 DOIT, 56 Neopixels and a DS18b20 temperature sensor";
     aboutObject["repository"] = "https://github.com/renssies/esp-temperature-display";
     response->setLength();
 
@@ -264,6 +234,11 @@ void readPreferences() {
 //
 
 void loop() {
+  #if DIGITS_DEBUG
+  testNumbers();
+  testLetters();
+  #else
+  
   connectMQTT();
   wifiManager.process();
   drd->loop();
@@ -271,9 +246,6 @@ void loop() {
   MDNS.update();
   #endif
 
-  #if DIGITS_DEBUG
-  testNumbers();
-  #else
   readTemperature();
 
   if (wifiManager.getConfigPortalActive()) {
@@ -287,22 +259,23 @@ void loop() {
 //
 // MARK: - Neopixels
 //
+#if DIGITS_DEBUG
 void testNumbers() {
   if (!state->shouldUpdatePixels()) {
     return;
   }
 
-  for (int i = 0; i < 14; i++) {
+  for (int i = 0; i < 10; i++) {
     clearPixels();
-    
-    int segment1Digit = i;
-    int segment2Digit = i;
+
+    Digit segment1Digit = Digit(i);
+    Digit segment2Digit = Digit(i);
 
     Serial.printf("Setting segments to: %d\n", segment1Digit);
 
     for (int j = 0; j <= 63; j++) {
-      if (bitRead(digitMapping[segment1Digit], j)) { segment1Pixels.setPixelColor(j, segment1Pixels.Color(255, 255, 255)); }
-      if (bitRead(digitMapping[segment2Digit], j)) { segment2Pixels.setPixelColor(j, segment2Pixels.Color(255, 255, 255)); }
+      if (bitRead(segment1Digit.getDigitValue(), j)) { segment1Pixels.setPixelColor(j, segment1Pixels.Color(255, 255, 255)); }
+      if (bitRead(segment2Digit.getDigitValue(), j)) { segment2Pixels.setPixelColor(j, segment2Pixels.Color(255, 255, 255)); }
     }
 
     segment1Pixels.setBrightness(state->brightness);
@@ -315,6 +288,36 @@ void testNumbers() {
 
   state->updateLastPixelChangeTime();
 }
+
+void testLetters() {
+  if (!state->shouldUpdatePixels()) {
+    return;
+  }
+
+  for (char i = 'a'; i < 'z'; i++) {
+    clearPixels();
+
+    Digit segment1Digit = Digit(i);
+    Digit segment2Digit = Digit(i);
+
+    Serial.printf("Setting segments to: %d\n", segment1Digit);
+
+    for (int j = 0; j <= 63; j++) {
+      if (bitRead(segment1Digit.getDigitValue(), j)) { segment1Pixels.setPixelColor(j, segment1Pixels.Color(255, 255, 255)); }
+      if (bitRead(segment2Digit.getDigitValue(), j)) { segment2Pixels.setPixelColor(j, segment2Pixels.Color(255, 255, 255)); }
+    }
+
+    segment1Pixels.setBrightness(state->brightness);
+    segment1Pixels.show();
+    segment2Pixels.setBrightness(state->brightness);
+    segment2Pixels.show();
+
+    delay(500);
+  }
+
+  state->updateLastPixelChangeTime();
+}
+#endif
 
 void updateNeopixelsTemperature() {
   // This code needs to be replaced to show the temperature.
@@ -330,77 +333,73 @@ void updateNeopixelsTemperature() {
   }
 
   int testTemp = state->displayTemperature;
-  int segment1Digit = 0;
-  int segment2Digit = 0;
+  Digit segment1Digit = Digit(::ZERO);
+  Digit segment2Digit = Digit(::ZERO);
+
   int pixelColorRed = 0;
   int pixelColorBlue = 0;
   int pixelColorGreen = 0;
 
   clearPixels();
 
-  if (testTemp < -9) {  //too LOW
-    segment1Digit = 13;
-    segment2Digit = 0;
-    pixelColorRed = 255;
-    pixelColorBlue = 255;
-    pixelColorGreen = 0;
+  switch (testTemp) {
+    case std::numeric_limits<int>::min() ... -10:
+      segment1Digit = Digit(::L);
+      segment2Digit = Digit(::O);
+      pixelColorRed = 255;
+      pixelColorBlue = 255;
+      pixelColorGreen = 0;
+      break;
+    case -9 ... -1:
+      segment1Digit = Digit(::DASH);
+      segment2Digit = Digit(abs(testTemp));
+
+      pixelColorRed = map(testTemp,-10,0,255,0);
+      pixelColorBlue = 255;
+      pixelColorGreen = 0;
+      break;
+    case 0:
+      segment1Digit = Digit(::EMPTY);
+      segment2Digit = Digit(::ZERO);
+
+      pixelColorRed = 0;
+      pixelColorBlue = 255;
+      pixelColorGreen = 0;
+      break;
+    case 1 ... 9:
+      segment1Digit = Digit(::EMPTY);
+      segment2Digit = Digit(testTemp);
+      
+      pixelColorRed = map(testTemp, 0, 10 , 0, 255);
+      pixelColorBlue = map(testTemp, 0, 10, 255, 0);
+      pixelColorGreen = map(testTemp, 0, 10, 0, 255);
+      break;
+    case 10 ... 30:
+      segment1Digit = Digit(testTemp / 10);
+      segment2Digit = Digit(testTemp % 10);
+      pixelColorRed = 255;
+      pixelColorBlue = 0;
+      pixelColorGreen = map(testTemp, 9, 30, 255, 0);
+      break;
+    case 31 ... 99:
+      segment1Digit = Digit(testTemp / 10);
+      segment2Digit = Digit(testTemp % 10);
+      pixelColorRed = 255;
+      pixelColorBlue = 0;
+      pixelColorGreen = 0;
+      break;
+    case 100 ... std::numeric_limits<int>::max():
+      segment1Digit = Digit(::H);
+      segment2Digit = Digit(::I);
+      pixelColorRed = 255;
+      pixelColorBlue = 0;
+      pixelColorGreen = 0;
+      break;
   }
 
-  if (testTemp < 0 and testTemp > -10) {
-    segment1Digit = 10;
-    segment2Digit = abs(testTemp);
-
-    pixelColorRed = map(testTemp,-10,0,255,0);
-    pixelColorBlue = 255;
-    pixelColorGreen = 0;
-  }
-
-
-  if (testTemp == 0) {  //Zero
-    segment1Digit = 11;
-    segment2Digit = 0;
-
-    pixelColorRed = 0;
-    pixelColorBlue = 255;
-    pixelColorGreen = 0;
-  }
-
-  if (testTemp > 0 and testTemp < 10) {  //single digit
-    segment1Digit = 11;
-    segment2Digit = testTemp;
-    pixelColorRed = map(testTemp,0,10,0,255);
-    pixelColorBlue = map(testTemp,0,10,255,0);
-    pixelColorGreen = map(testTemp,0,10,0,255);
-  }
-
-  if (testTemp > 9 and testTemp < 31) {  // Double digit low
-    segment1Digit = testTemp / 10;
-    segment2Digit = testTemp % 10;
-    pixelColorRed = 255;
-    pixelColorBlue = 0;
-    pixelColorGreen = map(testTemp,9,30,255,0);
-  }
-
-  if (testTemp > 30 and testTemp <100) {  // Double digit high
-    segment1Digit = testTemp / 10;
-    segment2Digit = testTemp % 10;
-    pixelColorRed = 255;
-    pixelColorBlue = 0;
-    pixelColorGreen = 0;
-  }
-
-
-  if (testTemp > 99) {  //too HIGH
-    segment1Digit = 12;
-    segment2Digit = 1;
-    pixelColorRed = 255;
-    pixelColorBlue = 0;
-    pixelColorGreen = 0;
-  }
-
-  for (int i = 0; i <= (sizeof(digitMapping[0]) * 8); i++) {
-    if (bitRead(digitMapping[segment1Digit], i)) { segment1Pixels.setPixelColor(i, segment1Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
-    if (bitRead(digitMapping[segment2Digit], i)) { segment2Pixels.setPixelColor(i, segment2Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
+  for (int i = 0; i <= NUMBER_OF_PIXELS; i++) {
+    if (bitRead(segment1Digit.getDigitValue(), i)) { segment1Pixels.setPixelColor(i, segment1Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
+    if (bitRead(segment2Digit.getDigitValue(), i)) { segment2Pixels.setPixelColor(i, segment2Pixels.Color(pixelColorRed, pixelColorGreen, pixelColorBlue)); }
   }
 
   segment1Pixels.setBrightness(state->brightness);
@@ -462,7 +461,7 @@ void hideUnavailableLines() {
 //
 
 void readTemperature() {
-  if (state->shouldReadTemprature()) {
+  if (state->shouldReadTemperature()) {
     if (!temperatureSensors.requestTemperaturesByIndex(0)) {
       state->temperature = -100;
       state->displayTemperature = -100;
@@ -474,7 +473,7 @@ void readTemperature() {
     state->temperature = newTemperature;
     state->displayTemperature = round(newTemperature);
     state->updateLastTemperatureReadTime();
-    pulishTemperatureTopic(newTemperature);
+    publishTemperatureTopic(newTemperature);
   }
 }
 
@@ -547,8 +546,9 @@ void publishHADiscoveryTopic() {
   mqttClient.setBufferSize(MQTT_MAX_PACKET_SIZE);
 }
 
-void pulishTemperatureTopic(float temperature) {
+void publishTemperatureTopic(float temperature) {
   if (!mqttClient.connected()) {
+    Serial.println("Attempting to publish when MQTT Client isn't connected. Ignoring.");
     return;
   }
   if (!isValidTemperatureValue(temperature)) {
