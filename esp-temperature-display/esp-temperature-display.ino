@@ -8,6 +8,9 @@
 #include "ESP8266_Support.h"
 #endif
 
+// Needs to be before ESP_DoubleResetDetector
+#include "constants.h"
+
 #include <ESPAsyncWebServer.h>       // https://github.com/me-no-dev/ESPAsyncWebServer/tree/f71e3d427b5be9791a8a2c93cf8079792c3a9a26
 #include <ESP_DoubleResetDetector.h> // From Library Manager, version 1.3.2
 
@@ -15,7 +18,7 @@
 #include <OneWire.h>              // From Library Manager, version 2.3.7
 #include <DallasTemperature.h>    // From Library Manager, version 3.9.0
 #include <PubSubClient.h>         // https://pubsubclient.knolleary.net, version 2.8.0
-#include <Preferences.h>          //  From Library Manager, version 2.1.0
+#include <Preferences.h>
 
 #include <AsyncJson.h>
 #include <ArduinoJson.h>  // From Library Manager, version 6.21.2
@@ -23,7 +26,6 @@
 // C++
 #include <limits>
 
-#include "constants.h"
 #include "state.h"
 #include "digit.h"
 
@@ -115,14 +117,14 @@ void setupWiFiManager() {
     wifiManager.startConfigPortal(CONFIG_AP_SSID, CONFIG_AP_PASSWORD);
     Serial.printf("Config portal started, network password: %s\n", CONFIG_AP_PASSWORD);
   } else if (wifiManager.autoConnect(CONFIG_AP_SSID, CONFIG_AP_PASSWORD)) {
-    Serial.printf("Connected... yaay :)\nIP address: %s MAC Address: %s\n", WiFi.localIP(), WiFi.macAddress());
+    Serial.printf("Connected... yaay :)\nIP address: %s MAC Address: %s\n", WiFi.localIP().toString().c_str(), WiFi.macAddress().c_str());
     if (!MDNS.begin(hostname)) {
       Serial.println("Failed to start mDNS");
     }
     MDNS.addService("http", "tcp", 80);
     MDNS.addServiceTxt("http", "tcp", "id", String(chipID));
     MDNS.addServiceTxt("http", "tcp", "ma", WiFi.macAddress().c_str());
-    MDNS.addServiceTxt("http", "tcp", "hw", "esp8266");
+    MDNS.addServiceTxt("http", "tcp", "hw", "esp32");
   } else {
     showUnavailableLines(0, 0, state->brightness);
 
