@@ -20,13 +20,13 @@
 #define DRD_ADDRESS 0
 
 // The minimum interval between temperature reads.
-#define READ_TEMPERATURE_INTERVAL 3000 // miliseconds
+#define READ_TEMPERATURE_INTERVAL 3000  // miliseconds
 
 // The minumum interval between pixel changes when running a loop (for in config mode)
-#define PIXEL_CHANGE_INTERVAL 500 // miliseconds
+#define PIXEL_CHANGE_INTERVAL 100  // miliseconds
 
 // The minimum interval between MQTT connection attempts
-#define MQTT_CONNECT_INTERVAL 10000 // miliseconds
+#define MQTT_CONNECT_INTERVAL 10000  // miliseconds
 
 // The network SSID for the config portal.
 #define CONFIG_AP_SSID "temp-display-cfg"
@@ -37,6 +37,9 @@
 // The hostname for WiFi and mDNS.
 #define HOSTNAME_PREFIX "esp-temp-display"
 
+// Should the program loop through all digits
+#define DIGITS_DEBUG 0
+
 const char easter_egg[] PROGMEM = R"=====(
 <!DOCTYPE html>
 <html>
@@ -44,7 +47,7 @@ const char easter_egg[] PROGMEM = R"=====(
 <title>I'm a teapot</title>
   </head>
   <body>
-  
+
   <h1>I'm a teapot!</h1>
   <pre id="teapot">
 |-------------------|
